@@ -22,13 +22,18 @@ TOKENIZER_CONFIG_URL = "https://www.dropbox.com/scl/fi/aczjnphx4tuw6qckk97lq/tok
 TRAINING_ARGS_URL = "https://www.dropbox.com/scl/fi/egzlwrind6efz7zd0oiwd/training_args.bin?rlkey=nyc3x2ectrdabo64rjuosd57q&st=qozrhhm4&dl=1"
 VOCAB_URL = "https://www.dropbox.com/scl/fi/6vl79blwbq5c6m92jbtdu/vocab.txt?rlkey=epgrx4upfxycoombzwerh52ju&st=uv28w69i&dl=1"
 
-MODEL_PATH = "./bert_model"  # Local folder where model parts will be saved
+# Absolute path to model directory
+MODEL_PATH = os.path.join(os.getcwd(), "bert_model")  # Absolute path to avoid ambiguity
 
-
-# Function to download the model parts
+# Function to download model parts
 def download_model_parts():
     if not os.path.exists(MODEL_PATH):
-        os.makedirs(MODEL_PATH)
+        try:
+            os.makedirs(MODEL_PATH)
+            print(f"Directory {MODEL_PATH} created successfully!")
+        except Exception as e:
+            print(f"Failed to create directory {MODEL_PATH}. Error: {e}")
+            return  # Exit the function if directory creation fails
 
     # List of URLs and corresponding filenames
     model_files = [
@@ -42,28 +47,35 @@ def download_model_parts():
     ]
 
     for url, filename in model_files:
-        print(f"Downloading {filename}...")
-        response = requests.get(url)
-        if response.status_code == 200:
-            with open(os.path.join(MODEL_PATH, filename), "wb") as file:
-                file.write(response.content)
-            print(f"{filename} downloaded successfully!")
+        file_path = os.path.join(MODEL_PATH, filename)
+        
+        # Only download if file does not exist
+        if not os.path.exists(file_path):
+            print(f"Downloading {filename}...")
+            response = requests.get(url)
+            if response.status_code == 200:
+                with open(file_path, "wb") as file:
+                    file.write(response.content)
+                print(f"{filename} downloaded successfully!")
+            else:
+                print(f"Failed to download {filename}. Status code: {response.status_code}")
         else:
-            print(f"Failed to download {filename}. Status code: {response.status_code}")
-
+            print(f"{filename} already exists, skipping download.")
 
 # Check if the model parts exist, if not, download them
-if not os.path.exists(MODEL_PATH) or not all(os.path.exists(os.path.join(MODEL_PATH, f)) for f in
-                                             ["tokenizer.json", "model.safetensors", "config.json",
-                                              "special_tokens_map.json", "tokenizer_config.json", "training_args.bin",
-                                              "vocab.txt"]):
+required_files = ["tokenizer.json", "model.safetensors", "config.json", 
+                  "special_tokens_map.json", "tokenizer_config.json", 
+                  "training_args.bin", "vocab.txt"]
+
+# Check for file existence in the absolute path
+if not os.path.exists(MODEL_PATH) or not all(os.path.exists(os.path.join(MODEL_PATH, f)) for f in required_files):
     download_model_parts()
 
-# Initialize the tokenizer and model
+# Initialize tokenizer and model
 tokenizer = AutoTokenizer.from_pretrained(MODEL_PATH)
 model = AutoModelForSequenceClassification.from_pretrained(MODEL_PATH)
 
-
+# Function to classify sentiment
 def classify_sentiment(text):
     inputs = tokenizer(text, return_tensors="pt", truncation=True, padding=True, max_length=128)
     outputs = model(**inputs)
@@ -178,11 +190,11 @@ def scrape_twitter():
         return jsonify({"status": "success", "tweets": tweet_texts, "chart": pie_chart_base64})
 
     except requests.exceptions.RequestException as e:
-        print(f"API error: {e}")
-        return jsonify({"status": "error", "message": "Failed to fetch tweets from API"}), 500
+        print(f"Error while calling Apify API: {e}")
+        return jsonify({"status": "error", "message": "An error occurred while processing your request."}), 500
     except Exception as e:
-        print(f"Processing error: {e}")
-        return jsonify({"status": "error", "message": str(e)}), 500
+        print(f"An error occurred: {e}")
+        return jsonify({"status": "error", "message": "An unexpected error occurred."}), 500
 
 
 if __name__ == "__main__":
